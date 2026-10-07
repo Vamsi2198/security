@@ -1,17 +1,20 @@
-#!/usr/bin/env bash
-# Render start command: boot the Portkey OSS gateway (Node) in the
-# background, wait for it, then serve the demo page on $PORT.
+#!/bin/sh
+# Start all three processes; the proxy (public entrypoint) runs in the foreground.
 set -e
-cd "$(dirname "$0")"
 
-TRUSTED_CUSTOM_HOSTS="127.0.0.1,localhost" \
-  node node_modules/@portkey-ai/gateway/build/start-server.js \
-  > gateway.log 2>&1 &
+echo "[start] launching Portkey gateway on 127.0.0.1:8787 ..."
+node /app/gw/node_modules/@portkey-ai/gateway/build/start-server.js &
 
-# Give the gateway up to 60s to come up (usually ~2s).
-for _ in $(seq 1 60); do
-  if curl -s -o /dev/null http://127.0.0.1:8787; then break; fi
+echo "[start] launching mock LLM (:9100) + safety webhook (:9200) ..."
+python3 /app/mock_services.py &
+
+# Wait for the gateway to accept connections before opening the proxy
+i=0
+until python3 -c "import socket,sys; s=socket.socket(); sys.exit(0 if s.connect_ex(('127.0.0.1',8787))==0 else 1)"; do
+  i=$((i+1)); [ "$i" -gt 60 ] && echo "[start] gateway never came up" && exit 1
   sleep 1
 done
+echo "[start] gateway healthy"
 
-exec python app.py
+echo "[start] launching policy proxy on ${BIND:-0.0.0.0}:${PORT:-10000} ..."
+exec python3 /app/policy_proxy.py

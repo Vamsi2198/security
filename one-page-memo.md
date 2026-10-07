@@ -11,6 +11,11 @@ request through. The docs say so: on timeout, the default verdict is pass.
 I reproduced it on the open-source gateway: a destructive request, a guardrail
 check that times out at 1000ms — HTTP 200, request executed.
 
+The precise way to say it: the gateway has no UNKNOWN state. A check has two
+outcomes — pass or fail — and when the check can't answer at all, the timeout
+is silently converted into a pass. UNKNOWN becomes ALLOW, by default, on every
+action class alike.
+
 This isn't a bug, and the fix isn't "add fail-closed." That primitive already
 exists: `failOnError` on the check, `deny` on the guardrail, and org-,
 workspace-, and server-scoped guardrails that enforce policy centrally. My
@@ -18,9 +23,12 @@ demo shows all of it working. The gap is somewhere else.
 
 ## The gap: enforcement is mapped to scope, not to risk
 
-Every enforcement decision today is attached *by hand, by scope* — this org,
-this workspace, this server, this tool. Nothing attaches enforcement to *what
-an action does*. Three consequences:
+AI gateways today answer two questions: *is the request safe* (guardrails) and,
+increasingly, *is the actor allowed* (authorization). The unanswered third
+question is: **what should happen when we can't determine either?** Today the
+answer is an accident of defaults. Every enforcement decision is attached
+*by hand, by scope* — this org, this workspace, this server, this tool.
+Nothing attaches enforcement to *what an action does*. Three consequences:
 
 1. To fail closed on every destructive tool, an admin must know every
    destructive tool and attach the rule to each one.
@@ -30,6 +38,9 @@ an action does*. Three consequences:
    passing through this gateway has anyone classified at all?**
 
 ## The proposal: a risk-tiered policy layer
+
+In classic terms: the gateway stays the Policy Enforcement Point; what's
+missing is the Policy Decision Point above it. Concretely:
 
 - **Derive the action from the payload, never from the caller.** In the
   product, the MCP gateway reads the `tools/call` name itself; a caller's

@@ -20,6 +20,7 @@ OSS gateway alone doesn't persist per-action policies, so the demo uses this
 thin shim to show the same property: the caller cannot choose its own tier.
 """
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,8 +29,13 @@ from urllib import request as urlreq
 from urllib.error import HTTPError
 
 HERE = Path(__file__).resolve().parent
-GATEWAY = "http://127.0.0.1:8787/v1/chat/completions"
+GATEWAY = os.environ.get("GATEWAY_URL", "http://127.0.0.1:8787/v1/chat/completions")
 RECEIPTS = HERE / "enforcement_receipts.jsonl"
+
+# Deployment configuration (all optional; laptop defaults preserve demo behavior)
+PORT = int(os.environ.get("PORT", "9300"))
+BIND = os.environ.get("BIND", "127.0.0.1")
+DEMO_TOKEN = os.environ.get("DEMO_TOKEN", "")
 
 BASE_TARGET = {"provider": "openai", "api_key": "dummy",
                "custom_host": "http://127.0.0.1:9100"}
@@ -101,7 +107,32 @@ def fire_audit_receipt(action):
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
+    def _send_json(self, status, obj, extra_headers=None):
+        payload = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        for k, v in (extra_headers or {}).items():
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):
+        # Render health checks need a GET endpoint that answers without auth.
+        if self.path.rstrip("/") in ("", "/healthz"):
+            self._send_json(200, {"status": "ok", "service": "risk-gate-demo"})
+        else:
+            self._send_json(404, {"error": "not found"})
+
     def do_POST(self):
+        # Demo-token auth. On brand: a missing or wrong token fails CLOSED.
+        if DEMO_TOKEN and self.headers.get("x-demo-token") != DEMO_TOKEN:
+            log_receipt({"component": "policy_proxy", "event": "AUTH_REJECTED",
+                         "note": "missing or wrong x-demo-token"})
+            self._send_json(401, {"error": {"message": "missing or wrong x-demo-token",
+                                            "type": "auth_failed"}})
+            return
+
         store = load_store()
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
@@ -150,20 +181,24 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if status == 200 and str(tier) == "2":
             fire_audit_receipt(action)  # out of band; request already answered
 
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("X-RiskGate-Action", action)
-        self.send_header("X-RiskGate-Tier", str(tier))
-        self.send_header("X-RiskGate-Outcome", outcome)
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        self._send_json(status, json.loads(payload), {
+            "X-RiskGate-Action": action,
+            "X-RiskGate-Tier": str(tier),
+            "X-RiskGate-Outcome": outcome,
+        })
 
     def log_message(self, *a):
         pass
 
 
 if __name__ == "__main__":
-    print("policy-proxy -> http://127.0.0.1:9300  (callers POST here with x-action header)")
-    print("client-supplied x-portkey-config is always stripped; enforcement is server-side")
-    ThreadingHTTPServer(("127.0.0.1", 9300), ProxyHandler).serve_forever()
+    # PORT: Render injects it (default 10000); 9300 locally.
+    # BIND: 0.0.0.0 in the container; override with BIND=127.0.0.1 for laptop runs.
+    port = PORT
+    print(f"policy-proxy -> http://{BIND}:{port}  (action parsed from payload tool_call)")
+    print("client config stripped; labels treated as hints; unknown actions fail closed")
+    if DEMO_TOKEN:
+        print("demo-token auth: ON (x-demo-token required)")
+    else:
+        print("demo-token auth: OFF (set DEMO_TOKEN to require it)")
+    ThreadingHTTPServer((BIND, port), ProxyHandler).serve_forever()

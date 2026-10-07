@@ -57,8 +57,9 @@ The policy matrix:
 | `human_review.json` | The human review queue — the only path from OBSERVED to VERIFIED |
 | `run_demo.py` | The four-act demo driver; writes `transcript.txt` |
 | `transcript.txt` | Captured output of a real run |
+| `Dockerfile`, `start.sh`, `render.yaml` | Single-service deploy packaging (gateway + mocks + proxy in one container) |
 
-## Setup (5 minutes)
+## Setup (5 minutes, laptop)
 
 ```bash
 # 1. Portkey OSS gateway (MIT license)
@@ -70,6 +71,49 @@ TRUSTED_CUSTOM_HOSTS="127.0.0.1,localhost" node node_modules/@portkey-ai/gateway
 # 3. Run the demo (starts the mock services and proxy itself)
 python3 run_demo.py
 ```
+
+## Deploy (Render, one service)
+
+For a live URL a hiring manager can curl. One Docker container bundles the
+gateway (internal, `127.0.0.1:8787`), the mock services, and the proxy
+(public entrypoint on `$PORT`). The proxy requires a demo token — a missing
+or wrong token fails closed with a 401, which is on brand.
+
+```bash
+# local build check
+docker build -t risk-gate-demo .
+docker run -p 10000:10000 -e DEMO_TOKEN=choose-a-token risk-gate-demo
+```
+
+On Render: push this folder to a repo, "New → Web Service → Docker" (or use
+the included `render.yaml`), set `DEMO_TOKEN` in the dashboard. Health checks
+hit `/healthz` (no token required).
+
+Try the deployed demo:
+
+```bash
+BASE=https://your-service.onrender.com
+TOK=choose-a-token
+
+# verified read-only action rides out the outage  -> 200
+curl -i -X POST $BASE/v1/chat/completions -H "x-demo-token: $TOK" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"mock-llm","messages":[{"role":"user","content":"run the weekly report"}],
+       "tool_call":{"server":"analytics-server","tool":"run_report","arguments":{"report_id":"w1"}}}'
+
+# destructive action, safety check degraded       -> 446
+curl -i -X POST $BASE/v1/chat/completions -H "x-demo-token: $TOK" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"mock-llm","messages":[{"role":"user","content":"delete customer 4417"}],
+       "tool_call":{"server":"crm-server","tool":"delete_customer","arguments":{"customer_id":"4417"}}}'
+
+# no token                                        -> 401
+curl -i -X POST $BASE/v1/chat/completions -H 'Content-Type: application/json' -d '{}'
+```
+
+The safety webhook is always degraded in this deployment — the outage *is*
+the demo scenario. `Dockerfile`, `start.sh`, and `render.yaml` are the only
+deploy-specific files; the demo logic is untouched.
 
 ## The four acts
 

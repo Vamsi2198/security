@@ -1,11 +1,13 @@
 services:
   - type: web
-    name: security
-    runtime: python
-    plan: free
-    buildCommand: pip install -r requirements.txt && npm install --ignore-scripts @portkey-ai/gateway
-    startCommand: bash start.sh
-    healthCheckPath: /
+    name: risk-gate-demo
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
+      - key: DEMO_TOKEN
+        sync: false        # set this in the Render dashboard — a shared secret for demo callers
+      - key: BIND
+        value: 0.0.0.0
+      - key: TRUSTED_CUSTOM_HOSTS
+        value: 127.0.0.1,localhost

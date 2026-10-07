@@ -1,0 +1,10 @@
+.git
+__pycache__
+*.jsonl
+transcript.txt
+mock.log
+proxy.log
+README.md
+one-page-memo.md
+interview-notes.md
+run_demo.py

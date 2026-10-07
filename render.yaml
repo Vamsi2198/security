@@ -3,8 +3,9 @@ services:
     name: security
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    buildCommand: pip install -r requirements.txt && npm install --ignore-scripts @portkey-ai/gateway
+    startCommand: bash start.sh
+    healthCheckPath: /
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0

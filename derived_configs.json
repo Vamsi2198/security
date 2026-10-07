@@ -1,0 +1,227 @@
+{
+  "crm-server/get_customer": {
+    "action": "crm-server/get_customer",
+    "risk_tier": 1,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::crm-server/get_customer",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=crm-server/get_customer",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "crm-server/list_customers": {
+    "action": "crm-server/list_customers",
+    "risk_tier": 1,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::crm-server/list_customers",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=crm-server/list_customers",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "crm-server/update_customer_email": {
+    "action": "crm-server/update_customer_email",
+    "risk_tier": 2,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::crm-server/update_customer_email",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=crm-server/update_customer_email",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "crm-server/delete_customer": {
+    "action": "crm-server/delete_customer",
+    "risk_tier": 3,
+    "verification": "VERIFIED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::crm-server/delete_customer",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=crm-server/delete_customer",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "crm-server/merge_accounts": {
+    "action": "crm-server/merge_accounts",
+    "risk_tier": 3,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::crm-server/merge_accounts",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=crm-server/merge_accounts",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "comms-server/send_email": {
+    "action": "comms-server/send_email",
+    "risk_tier": 3,
+    "verification": "VERIFIED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::comms-server/send_email",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=comms-server/send_email",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "comms-server/post_slack_message": {
+    "action": "comms-server/post_slack_message",
+    "risk_tier": 2,
+    "verification": "VERIFIED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::comms-server/post_slack_message",
+        "deny": true,
+        "async": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=comms-server/post_slack_message",
+          "timeout": 1000,
+          "failOnError": false
+        }
+      }
+    ]
+  },
+  "comms-server/read_thread": {
+    "action": "comms-server/read_thread",
+    "risk_tier": 1,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::comms-server/read_thread",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=comms-server/read_thread",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "analytics-server/run_report": {
+    "action": "analytics-server/run_report",
+    "risk_tier": 1,
+    "verification": "VERIFIED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::analytics-server/run_report",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=analytics-server/run_report",
+          "timeout": 1000,
+          "failOnError": false
+        }
+      }
+    ]
+  },
+  "analytics-server/export_dataset": {
+    "action": "analytics-server/export_dataset",
+    "risk_tier": 3,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::analytics-server/export_dataset",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=analytics-server/export_dataset",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "analytics-server/zql_query": {
+    "action": "analytics-server/zql_query",
+    "risk_tier": 1,
+    "verification": "VERIFIED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::analytics-server/zql_query",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=analytics-server/zql_query",
+          "timeout": 1000,
+          "failOnError": false
+        }
+      }
+    ]
+  },
+  "billing-server/get_invoice": {
+    "action": "billing-server/get_invoice",
+    "risk_tier": 1,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::billing-server/get_invoice",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=billing-server/get_invoice",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "billing-server/refund_payment": {
+    "action": "billing-server/refund_payment",
+    "risk_tier": 3,
+    "verification": "OBSERVED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::billing-server/refund_payment",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=billing-server/refund_payment",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  },
+  "billing-server/reconcile_ledger": {
+    "action": "billing-server/reconcile_ledger",
+    "risk_tier": "UNCLASSIFIED",
+    "verification": "UNCLASSIFIED",
+    "input_guardrails": [
+      {
+        "id": "risk-gate::billing-server/reconcile_ledger",
+        "deny": true,
+        "default.webhook": {
+          "webhookURL": "http://127.0.0.1:9200/check?action_class=billing-server/reconcile_ledger",
+          "timeout": 1000,
+          "failOnError": true
+        }
+      }
+    ]
+  }
+}

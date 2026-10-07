@@ -1,0 +1,128 @@
+[
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "crm-server/get_customer",
+    "risk_tier": 1,
+    "tier_label": "read-only",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched read marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "crm-server/list_customers",
+    "risk_tier": 1,
+    "tier_label": "read-only",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched read marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "crm-server/update_customer_email",
+    "risk_tier": 2,
+    "tier_label": "internal-write",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched write marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "crm-server/delete_customer",
+    "risk_tier": 3,
+    "tier_label": "destructive-or-external",
+    "verification": "VERIFIED",
+    "classifier_reason": "human review by sec-eng (synthetic): confirmed destructive \u2014 hard delete, no soft-delete flag",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "crm-server/merge_accounts",
+    "risk_tier": 3,
+    "tier_label": "destructive-or-external",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched destructive/external marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "comms-server/send_email",
+    "risk_tier": 3,
+    "tier_label": "destructive-or-external",
+    "verification": "VERIFIED",
+    "classifier_reason": "human review by sec-eng (synthetic): confirmed external egress channel",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "comms-server/post_slack_message",
+    "risk_tier": 2,
+    "tier_label": "internal-write",
+    "verification": "VERIFIED",
+    "classifier_reason": "human review by sec-eng (synthetic): confirmed internal workspace channel only, no external egress",
+    "derived_failure_mode": "fail_open_with_async_receipt"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "comms-server/read_thread",
+    "risk_tier": 1,
+    "tier_label": "read-only",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched read marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "analytics-server/run_report",
+    "risk_tier": 1,
+    "tier_label": "read-only",
+    "verification": "VERIFIED",
+    "classifier_reason": "human review by sec-eng (synthetic): confirmed read-only reporting path",
+    "derived_failure_mode": "fail_open"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "analytics-server/export_dataset",
+    "risk_tier": 3,
+    "tier_label": "destructive-or-external",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched destructive/external marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "analytics-server/zql_query",
+    "risk_tier": 1,
+    "tier_label": "read-only",
+    "verification": "VERIFIED",
+    "classifier_reason": "human review by sec-eng (synthetic): inspected: ZQL executes against read replica; write verbs rejected upstream",
+    "derived_failure_mode": "fail_open"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "billing-server/get_invoice",
+    "risk_tier": 1,
+    "tier_label": "read-only",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched read marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "billing-server/refund_payment",
+    "risk_tier": 3,
+    "tier_label": "destructive-or-external",
+    "verification": "OBSERVED",
+    "classifier_reason": "matched destructive/external marker",
+    "derived_failure_mode": "fail_closed"
+  },
+  {
+    "ts": "2026-10-06T21:33:05Z",
+    "action": "billing-server/reconcile_ledger",
+    "risk_tier": "UNCLASSIFIED",
+    "tier_label": "unknown",
+    "verification": "UNCLASSIFIED",
+    "classifier_reason": "no marker matched \u2014 needs human review",
+    "derived_failure_mode": "fail_closed"
+  }
+]

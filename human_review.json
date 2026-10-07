@@ -1,0 +1,27 @@
+{
+  "crm-server/delete_customer": {
+    "tier": 3,
+    "reviewer": "sec-eng (synthetic)",
+    "note": "confirmed destructive — hard delete, no soft-delete flag"
+  },
+  "comms-server/send_email": {
+    "tier": 3,
+    "reviewer": "sec-eng (synthetic)",
+    "note": "confirmed external egress channel"
+  },
+  "analytics-server/zql_query": {
+    "tier": 1,
+    "reviewer": "sec-eng (synthetic)",
+    "note": "inspected: ZQL executes against read replica; write verbs rejected upstream"
+  },
+  "analytics-server/run_report": {
+    "tier": 1,
+    "reviewer": "sec-eng (synthetic)",
+    "note": "confirmed read-only reporting path"
+  },
+  "comms-server/post_slack_message": {
+    "tier": 2,
+    "reviewer": "sec-eng (synthetic)",
+    "note": "confirmed internal workspace channel only, no external egress"
+  }
+}

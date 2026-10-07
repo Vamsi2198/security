@@ -1,2 +1,6 @@
 {"component": "policy_proxy", "event": "AUTH_REJECTED", "note": "missing or wrong x-demo-token", "ts": "2026-10-07T18:57:55Z"}
 {"component": "policy_proxy", "event": "AUTH_REJECTED", "note": "missing or wrong x-demo-token", "ts": "2026-10-07T18:57:55Z"}
+{"component": "policy_proxy", "event": "AUTH_REJECTED", "note": "missing or wrong x-demo-token", "ts": "2026-10-07T19:02:14Z"}
+{"component": "policy_proxy", "event": "AUTH_REJECTED", "note": "missing or wrong x-demo-token", "ts": "2026-10-07T19:02:14Z"}
+{"component": "policy_proxy", "event": "ENFORCEMENT_DECISION", "action": "crm-server/delete_customer", "risk_tier": 3, "outcome": "BLOCKED", "http_status": 446, "client_config_stripped": false, "ts": "2026-10-07T19:02:15Z"}
+{"component": "policy_proxy", "event": "ENFORCEMENT_DECISION", "action": "analytics-server/run_report", "risk_tier": 1, "outcome": "EXECUTED", "http_status": 200, "client_config_stripped": false, "ts": "2026-10-07T19:02:16Z"}

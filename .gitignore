@@ -1,0 +1,7 @@
+# Local gateway install (mirrors what the Dockerfile does inside the image)
+gw/
+
+# Python/runtime artifacts
+__pycache__/
+*.pyc
+*.log

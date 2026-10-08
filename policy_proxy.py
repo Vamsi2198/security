@@ -106,6 +106,110 @@ def fire_audit_receipt(action):
     threading.Thread(target=_send, daemon=True).start()
 
 
+# Demo console: one static page served at GET / so visitors can try the
+# enforcement point from a browser. No auth needed to READ the page; the
+# token is only sent on the POSTs, same as curl.
+DEMO_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk-Gate Demo Console</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 980px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.05rem; margin-top: 1.6rem; }
+  .sub { color: #666; }
+  code { background: #eee; padding: 0 .3em; border-radius: 4px; }
+  button { font-size: .95rem; padding: .55rem 1rem; border: 0; border-radius: 6px; background: #146eb4; color: #fff; cursor: pointer; margin: .2rem .2rem .2rem 0; }
+  button:hover { background: #0f5590; }
+  button small { display: block; font-weight: normal; opacity: .85; }
+  #token { width: 100%; max-width: 340px; padding: .5rem; border: 1px solid #bbb; border-radius: 6px; }
+  pre { background: #111; color: #0d0; padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; min-height: 120px; }
+  .pass { color: #0a0; font-weight: 600; } .block { color: #c00; font-weight: 600; }
+  table { border-collapse: collapse; margin-top: .5rem; } td, th { border: 1px solid #ccc; padding: .35rem .7rem; text-align: left; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Risk-Gate Demo Console</h1>
+<p class="sub">When the safety check is too slow (or down), who decides what the gate
+does? This proxy decides from the action's <b>risk tier</b> and whether a human
+<b>verified</b> it &mdash; not from caller-supplied labels. Try the scenarios below.</p>
+
+<h2>1. Enter your demo token</h2>
+<input id="token" type="password" placeholder="DEMO_TOKEN (ask the demo host)">
+<span class="sub">stored only in your browser's localStorage</span>
+
+<h2>2. Fire a scenario</h2>
+<div id="scenarios"></div>
+
+<h2>3. Result</h2>
+<div id="result"><pre>Pick a scenario above.</pre></div>
+
+<h2>What to expect</h2>
+<table>
+<tr><th>Scenario</th><th>Derived tier</th><th>Expected</th><th>Why</th></tr>
+<tr><td>Run usage report</td><td>1, VERIFIED</td><td class="pass">200 pass</td><td>Read-only + human-verified earns fail-open</td></tr>
+<tr><td>Post to #eng-updates</td><td>2, VERIFIED</td><td class="pass">200 pass</td><td>Internal write passes + audit receipt fired</td></tr>
+<tr><td>Delete customer</td><td>3, VERIFIED</td><td class="block">446 block</td><td>Destructive always fails closed</td></tr>
+<tr><td>Spoofed label</td><td>3 (from payload)</td><td class="block">446 block</td><td>Header claims "report", payload is a delete &rarr; payload wins, mismatch logged</td></tr>
+<tr><td>Unclassified tool</td><td>unknown</td><td class="block">446 block</td><td>Unknown risk fails closed until a human verifies it</td></tr>
+</table>
+<p class="sub">The safety webhook in this demo is deliberately degraded (slower than the
+gateway timeout), so every decision you see is the failure-mode policy doing its job.</p>
+
+<script>
+const SCENARIOS = [
+  {name: "Run usage report", hint: "expect 200",
+   body: {model: "mock-llm", messages: [{role: "user", content: "run the weekly usage report"}],
+          tool_call: {server: "analytics-server", tool: "run_report", arguments: {report_id: "weekly-usage"}}}},
+  {name: "Post to #eng-updates", hint: "expect 200 + audit",
+   body: {model: "mock-llm", messages: [{role: "user", content: "announce the deploy"}],
+          tool_call: {server: "comms-server", tool: "post_slack_message", arguments: {channel: "#eng-updates", text: "deploy done"}}}},
+  {name: "Delete customer 4417", hint: "expect 446",
+   body: {model: "mock-llm", messages: [{role: "user", content: "delete all records for customer 4417"}],
+          tool_call: {server: "crm-server", tool: "delete_customer", arguments: {customer_id: "4417"}}}},
+  {name: "Spoofed label: claims 'report', is a delete", hint: "expect 446",
+   spoof: "analytics-server/run_report",
+   body: {model: "mock-llm", messages: [{role: "user", content: "delete all records for customer 4417"}],
+          tool_call: {server: "crm-server", tool: "delete_customer", arguments: {customer_id: "4417"}}}},
+  {name: "Unclassified tool (reconcile ledger)", hint: "expect 446",
+   body: {model: "mock-llm", messages: [{role: "user", content: "reconcile the ledger"}],
+          tool_call: {server: "billing-server", tool: "reconcile_ledger", arguments: {since: "2024-01"}}}},
+];
+const tok = document.getElementById('token');
+tok.value = localStorage.getItem('riskgate_token') || '';
+tok.addEventListener('change', () => localStorage.setItem('riskgate_token', tok.value));
+const box = document.getElementById('scenarios');
+for (const s of SCENARIOS) {
+  const b = document.createElement('button');
+  b.innerHTML = s.name + ' <small>' + s.hint + '</small>';
+  b.onclick = () => fire(s);
+  box.appendChild(b);
+}
+async function fire(s) {
+  const out = document.getElementById('result');
+  out.innerHTML = '<pre>sending ' + s.name + ' ... (first request after idle can take ~50s on the free tier)</pre>';
+  const headers = {'Content-Type': 'application/json', 'x-demo-token': tok.value};
+  if (s.spoof) headers['x-action'] = s.spoof;   // caller-supplied label: only a hint
+  let lines = ['scenario : ' + s.name];
+  try {
+    const r = await fetch('/v1/chat/completions', {method: 'POST', headers, body: JSON.stringify(s.body)});
+    const body = await r.text();
+    lines.push('HTTP     : ' + r.status + ' ' + (r.status === 200 ? 'EXECUTED' : 'BLOCKED'));
+    for (const h of ['X-RiskGate-Action', 'X-RiskGate-Tier', 'X-RiskGate-Outcome'])
+      lines.push(h.replace('X-RiskGate-', 'gate      : ') + ' = ' + (r.headers.get(h) || '-'));
+    lines.push('', 'response body:', body);
+  } catch (e) {
+    lines.push('request failed: ' + e);
+  }
+  out.innerHTML = '<pre></pre>';
+  out.firstChild.textContent = lines.join('\\n');
+}
+</script>
+</body>
+</html>"""
+
+
 class ProxyHandler(BaseHTTPRequestHandler):
     def _send_json(self, status, obj, extra_headers=None):
         payload = json.dumps(obj).encode()
@@ -119,8 +223,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         # Render health checks need a GET endpoint that answers without auth.
-        if self.path.rstrip("/") in ("", "/healthz"):
+        if self.path.rstrip("/") == "/healthz":
             self._send_json(200, {"status": "ok", "service": "risk-gate-demo"})
+        elif self.path.rstrip("/") in ("", "/demo"):
+            payload = DEMO_PAGE.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         else:
             self._send_json(404, {"error": "not found"})
 

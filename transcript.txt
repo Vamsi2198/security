@@ -3,57 +3,57 @@ DEMO: WHEN THE SAFETY CHECK IS TOO SLOW, WHO DECIDES WHAT THE GATE DOES?
 Synthetic data only. Portkey OSS gateway, local mock upstream, local webhook.
 ==============================================================================
 
-ACT 1 â€” THE GAP. Destructive action; the safety webhook is degraded.
+ACT 1 — THE GAP. Destructive action; the safety webhook is degraded.
 Straight to the gateway, nothing says what to do on timeout.
 ------------------------------------------------------------------------------
-  HTTP 200 in 1.07s -> REQUEST EXECUTED
+  HTTP 200 in 1.19s -> REQUEST EXECUTED
   webhook result: Request timed out after 1000ms
   fail_on_error=False  deny=False
   upstream said: [MOCK LLM] Executed request: delete all records for customer 4417
   => The check TIMED OUT and the delete went through anyway. Fail-open by default.
 
-ACT 2 â€” THE PRIMITIVE THAT EXISTS. Same timeout, failOnError: true.
-The docs ship this toggle. It works â€” if a human flips it correctly,
+ACT 2 — THE PRIMITIVE THAT EXISTS. Same timeout, failOnError: true.
+The docs ship this toggle. It works — if a human flips it correctly,
 by hand, for every action, forever.
 ------------------------------------------------------------------------------
-  HTTP 446 in 1.01s -> REQUEST BLOCKED
+  HTTP 446 in 1.03s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => Same timeout, opposite outcome. The primitive exists; the POLICY doesn't.
 
-ACT 3 â€” THE PROPOSAL. Failure mode DERIVED from (risk tier,
+ACT 3 — THE PROPOSAL. Failure mode DERIVED from (risk tier,
 verification), attached SERVER-SIDE by the policy proxy. The action
-is parsed from the payload's tool_call â€” callers can't label
+is parsed from the payload's tool_call — callers can't label
 themselves. Only VERIFIED labels earn fail-open. Webhook degraded.
 ------------------------------------------------------------------------------
 
   caller -> payload tool_call=analytics-server/run_report
   proxy derived: action=analytics-server/run_report  tier=1
-  HTTP 200 in 1.09s -> REQUEST EXECUTED
+  HTTP 200 in 1.06s -> REQUEST EXECUTED
   webhook result: Request timed out after 1000ms
   fail_on_error=False  deny=False
   upstream said: [MOCK LLM] Executed request: run the weekly usage report
 
   caller -> payload tool_call=comms-server/post_slack_message
   proxy derived: action=comms-server/post_slack_message  tier=2
-  HTTP 200 in 0.01s -> REQUEST EXECUTED
-  guardrail ran ASYNC â€” the request never waited on the degraded
+  HTTP 200 in 0.02s -> REQUEST EXECUTED
+  guardrail ran ASYNC — the request never waited on the degraded
   check; the audit receipt lands out of band (shown below).
 
   caller -> payload tool_call=crm-server/delete_customer
   proxy derived: action=crm-server/delete_customer  tier=3
-  HTTP 446 in 1.01s -> REQUEST BLOCKED
+  HTTP 446 in 1.02s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
 
-ACT 4 â€” THE HOSTILE CALLER, TWO WAYS.
+ACT 4 — THE HOSTILE CALLER, TWO WAYS.
 4a) Label spoofing: the payload is a delete, but the caller labels
     it a read-only report, hoping for tier-1 fail-open. The proxy
     derives the action from the payload and logs the mismatch.
 ------------------------------------------------------------------------------
   caller -> header says run_report; payload tool_call=crm-server/delete_customer
   proxy derived: action=crm-server/delete_customer  tier=3 (mismatch logged)
-  HTTP 446 in 1.01s -> REQUEST BLOCKED
+  HTTP 446 in 1.02s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => The label is attacker-controlled; the payload is not. Enforcement
@@ -64,27 +64,37 @@ ACT 4 â€” THE HOSTILE CALLER, TWO WAYS.
 ------------------------------------------------------------------------------
   caller -> delete payload + its own fail-open config
   proxy derived: action=crm-server/delete_customer  tier=3 (client config stripped)
-  HTTP 446 in 1.01s -> REQUEST BLOCKED
+  HTTP 446 in 1.03s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => The caller cannot choose its own risk tier OR its own policy.
      That is enforcement.
 
 ------------------------------------------------------------------------------
-THE AUDIT TRAIL â€” every enforcement decision the proxy made,
+THE AUDIT TRAIL — every enforcement decision the proxy made,
 including the label spoof and the stripped hostile config:
+    !! AUTH_REJECTED: ? — missing or wrong x-demo-token
+    !! AUTH_REJECTED: ? — missing or wrong x-demo-token
+    !! AUTH_REJECTED: ? — missing or wrong x-demo-token
+    !! AUTH_REJECTED: ? — missing or wrong x-demo-token
+    crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
+    analytics-server/run_report                tier=1            EXECUTED  stripped_client_config=False
     analytics-server/run_report                tier=1            EXECUTED  stripped_client_config=False
     comms-server/post_slack_message            tier=2            EXECUTED  stripped_client_config=False
     crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
-    !! LABEL_MISMATCH: claimed=analytics-server/run_report  payload=crm-server/delete_customer â€” enforced payload
+    !! LABEL_MISMATCH: claimed=analytics-server/run_report  payload=crm-server/delete_customer — enforced payload
     crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
-    !! STRIPPED_CLIENT_CONFIG: crm-server/delete_customer â€” caller tried to attach its own guardrail config â€” removed
+    !! STRIPPED_CLIENT_CONFIG: crm-server/delete_customer — caller tried to attach its own guardrail config — removed
     crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=True
 
-ASYNC RECEIPT DRAIN â€” giving the out-of-band paths time to write
+ASYNC RECEIPT DRAIN — giving the out-of-band paths time to write
 (the tier-2 audit is fired by the proxy AFTER answering; the
 degraded webhook sleeps past the gateway timeout)...
-  webhook receipts written: 7
+  webhook receipts written: 11
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=analytics-server/run_report              mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=analytics-server/run_report              mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=analytics-server/run_report              mode=slow note=responded AFTER gateway already timed out
@@ -95,8 +105,8 @@ degraded webhook sleeps past the gateway timeout)...
 
 COVERAGE  verified: 5/14 human-confirmed (36%)   observed: 8/14 heuristic-only   unclassified: 1/14
 Unclassified (fail closed until reviewed): billing-server/reconcile_ledger
-Only VERIFIED labels earn fail-open. OBSERVED labels â€” including a
-poisoned 'fetch records' description on a delete tool â€” fail CLOSED
+Only VERIFIED labels earn fail-open. OBSERVED labels — including a
+poisoned 'fetch records' description on a delete tool — fail CLOSED
 until a human confirms them. The split controls behavior, not just
 the report.
 ==============================================================================

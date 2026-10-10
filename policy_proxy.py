@@ -41,6 +41,9 @@ BASE_TARGET = {"provider": "openai", "api_key": "dummy",
                "custom_host": "http://127.0.0.1:9100"}
 
 _lock = threading.Lock()
+# Bumped on every /reset so browsers holding stale stream positions can
+# re-sync (events re-index from 0 after a reset).
+GEN = [0]
 
 
 def log_receipt(entry):
@@ -283,10 +286,10 @@ async function runAll() {
   all.disabled = false;
 }
 
-/* ---- live audit trail, fed by GET /receipts ---- */
-let lastIdx = -1;
+/* ---- live audit trail, fed by GET /receipts (two streams + gen) ---- */
+let lastGate = -1, lastAudit = -1, lastGen = null;
 const auditEl = document.getElementById('audit');
-function fmt(e) {
+function fmtGate(e) {
   const t = (e.ts || '').slice(11, 19);
   if (e.event === 'ENFORCEMENT_DECISION')
     return t + '  ' + (e.outcome === 'EXECUTED' ? 'ALLOW' : 'BLOCK') + '  ' + e.action
@@ -300,33 +303,50 @@ function fmt(e) {
     return t + '  !! AUTH_REJECTED — missing or wrong x-demo-token; fails closed';
   return t + '  !! ' + e.event;
 }
+function fmtAudit(e) {
+  const t = (e.ts || '').slice(11, 19);
+  return t + '  AUDIT-RECEIPT  ' + e.action_class
+       + ' — fired out of band by the enforcement point; the request never waited';
+}
+function clearTrail() {
+  lastGate = -1; lastAudit = -1;
+  auditEl.textContent = '';
+  const span = document.createElement('span');
+  span.className = 'empty';
+  span.textContent = '(no events yet — fire a scenario)';
+  auditEl.appendChild(span);
+}
+function append(text) {
+  const empty = auditEl.querySelector('.empty');
+  if (empty) empty.remove();
+  const line = document.createElement('div');
+  line.textContent = text;
+  auditEl.appendChild(line);
+  auditEl.scrollTop = auditEl.scrollHeight;
+}
 async function poll() {
   try {
     const r = await (await fetch('/receipts')).json();
-    const evts = r.events || [];
-    const fresh = evts.filter(e => e.i > lastIdx);
-    if (!fresh.length) return;
-    const empty = auditEl.querySelector('.empty');
-    if (empty) empty.remove();
-    fresh.forEach(e => {
-      lastIdx = Math.max(lastIdx, e.i);
-      const line = document.createElement('div');
-      line.textContent = fmt(e);
-      auditEl.appendChild(line);
+    if (r.gen !== lastGen) {          // server reset (here or another tab)
+      lastGen = r.gen;
+      clearTrail();
+    }
+    (r.gate || []).filter(e => e.i > lastGate).forEach(e => {
+      lastGate = Math.max(lastGate, e.i);
+      append(fmtGate(e));
     });
-    auditEl.scrollTop = auditEl.scrollHeight;
+    (r.audit || []).filter(e => e.i > lastAudit).forEach(e => {
+      lastAudit = Math.max(lastAudit, e.i);
+      append(fmtAudit(e));
+    });
   } catch (e) { /* trail pauses; the scenario buttons keep working */ }
 }
 setInterval(poll, 2000); poll();
 
 async function resetAudit() {
   await fetch('/reset', {method: 'POST'});
-  lastIdx = -1;
-  auditEl.textContent = '';
-  const span = document.createElement('span');
-  span.className = 'empty';
-  span.textContent = '(no events yet — fire a scenario)';
-  auditEl.appendChild(span);
+  lastGen = null;                    // next poll re-syncs from the server
+  clearTrail();
 }
 </script>
 </body>
@@ -334,6 +354,11 @@ async function resetAudit() {
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
+    # 446 is the gateway's "blocked by guardrail" status; give it a reason
+    # phrase so status lines read "446 Policy Blocked" instead of bare 446.
+    responses = {**BaseHTTPRequestHandler.responses,
+                 446: ("Policy Blocked", "Request blocked by the derived risk policy")}
+
     def _send_json(self, status, obj, extra_headers=None):
         payload = json.dumps(obj).encode()
         self.send_response(status)
@@ -349,19 +374,36 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if self.path.rstrip("/") == "/healthz":
             self._send_json(200, {"status": "ok", "service": "risk-gate-demo"})
         elif self.path.rstrip("/") == "/receipts":
-            # Feeds the demo console's live audit trail. Receipts are written
-            # with json.dumps (ASCII-safe), so plain read_text is fine.
-            events = []
+            # Feeds the demo console's live audit trail. Two streams:
+            #   gate  — enforcement decisions (enforcement_receipts.jsonl)
+            #   audit — tier-2 receipts fired OUT OF BAND by the enforcement
+            #           point (webhook_receipts.jsonl, source=proxy-audit only;
+            #           the gateway-source rows are the timed-out calls, noise
+            #           for the UI)
+            # Receipts are written with json.dumps (ASCII-safe), so plain
+            # read_text is fine. Clients re-sync when "gen" changes.
+            gate, audit = [], []
             if RECEIPTS.exists():
                 for i, line in enumerate(RECEIPTS.read_text().splitlines()):
                     if line.strip():
                         try:
                             d = json.loads(line)
                             d["i"] = i
-                            events.append(d)
+                            gate.append(d)
                         except json.JSONDecodeError:
                             continue
-            self._send_json(200, {"events": events})
+            wr = HERE / "webhook_receipts.jsonl"
+            if wr.exists():
+                for i, line in enumerate(wr.read_text().splitlines()):
+                    if line.strip():
+                        try:
+                            d = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if d.get("source") == "proxy-audit":
+                            d["i"] = i
+                            audit.append(d)
+            self._send_json(200, {"gen": GEN[0], "gate": gate, "audit": audit})
         elif self.path.rstrip("/") in ("", "/demo"):
             # The demo token is injected into the page so visitors don't type
             # it. This keeps casual abuse out; it is not secrecy — anyone can
@@ -385,7 +427,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             for f in files:
                 if f.exists():
                     f.write_text("")
-            self._send_json(200, {"ok": True, "reset": [f.name for f in files]})
+            with _lock:
+                GEN[0] += 1  # tell every watching browser to re-sync
+            self._send_json(200, {"ok": True, "gen": GEN[0],
+                                  "reset": [f.name for f in files]})
             return
 
         # Demo-token auth. On brand: a missing or wrong token fails CLOSED.

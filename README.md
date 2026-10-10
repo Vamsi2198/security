@@ -121,7 +121,9 @@ page, five numbered scenario buttons walk the policy (verified read → pass,
 verified write → pass + audit receipt, destructive → block, spoofed label →
 block, unclassified → block), each shows the derived tier and outcome with a
 plain-English "what happened", and the audit trail streams live from
-`GET /receipts`. `POST /reset` clears the trail between visitors.
+`GET /receipts` — enforcement decisions plus the tier-2 audit receipts that
+land out of band. `POST /reset` clears the trail between visitors; its
+generation counter tells every open browser to re-sync.
 
 ## The four acts
 

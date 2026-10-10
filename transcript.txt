@@ -6,7 +6,7 @@ Synthetic data only. Portkey OSS gateway, local mock upstream, local webhook.
 ACT 1 — THE GAP. Destructive action; the safety webhook is degraded.
 Straight to the gateway, nothing says what to do on timeout.
 ------------------------------------------------------------------------------
-  HTTP 200 in 1.04s -> REQUEST EXECUTED
+  HTTP 200 in 1.03s -> REQUEST EXECUTED
   webhook result: Request timed out after 1000ms
   fail_on_error=False  deny=False
   upstream said: [MOCK LLM] Executed request: delete all records for customer 4417
@@ -29,20 +29,20 @@ themselves. Only VERIFIED labels earn fail-open. Webhook degraded.
 
   caller -> payload tool_call=analytics-server/run_report
   proxy derived: action=analytics-server/run_report  tier=1
-  HTTP 200 in 1.03s -> REQUEST EXECUTED
+  HTTP 200 in 1.02s -> REQUEST EXECUTED
   webhook result: Request timed out after 1000ms
   fail_on_error=False  deny=False
   upstream said: [MOCK LLM] Executed request: run the weekly usage report
 
   caller -> payload tool_call=comms-server/post_slack_message
   proxy derived: action=comms-server/post_slack_message  tier=2
-  HTTP 200 in 0.03s -> REQUEST EXECUTED
+  HTTP 200 in 0.02s -> REQUEST EXECUTED
   guardrail ran ASYNC — the request never waited on the degraded
   check; the audit receipt lands out of band (shown below).
 
   caller -> payload tool_call=crm-server/delete_customer
   proxy derived: action=crm-server/delete_customer  tier=3
-  HTTP 446 in 1.02s -> REQUEST BLOCKED
+  HTTP 446 in 1.03s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
 
@@ -64,7 +64,7 @@ ACT 4 — THE HOSTILE CALLER, TWO WAYS.
 ------------------------------------------------------------------------------
   caller -> delete payload + its own fail-open config
   proxy derived: action=crm-server/delete_customer  tier=3 (client config stripped)
-  HTTP 446 in 1.01s -> REQUEST BLOCKED
+  HTTP 446 in 1.02s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => The caller cannot choose its own risk tier OR its own policy.
@@ -73,7 +73,6 @@ ACT 4 — THE HOSTILE CALLER, TWO WAYS.
 ------------------------------------------------------------------------------
 THE AUDIT TRAIL — every enforcement decision the proxy made,
 including the label spoof and the stripped hostile config:
-    crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
     analytics-server/run_report                tier=1            EXECUTED  stripped_client_config=False
     comms-server/post_slack_message            tier=2            EXECUTED  stripped_client_config=False
     crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
@@ -90,8 +89,8 @@ degraded webhook sleeps past the gateway timeout)...
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=analytics-server/run_report              mode=slow note=responded AFTER gateway already timed out
-    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [proxy-audit] action=comms-server/post_slack_message          mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
 

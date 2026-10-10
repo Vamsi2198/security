@@ -1,6 +1,6 @@
 [
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "crm-server/get_customer",
     "risk_tier": 1,
     "tier_label": "read-only",
@@ -9,7 +9,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "crm-server/list_customers",
     "risk_tier": 1,
     "tier_label": "read-only",
@@ -18,7 +18,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "crm-server/update_customer_email",
     "risk_tier": 2,
     "tier_label": "internal-write",
@@ -27,7 +27,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "crm-server/delete_customer",
     "risk_tier": 3,
     "tier_label": "destructive-or-external",
@@ -36,7 +36,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "crm-server/merge_accounts",
     "risk_tier": 3,
     "tier_label": "destructive-or-external",
@@ -45,7 +45,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "comms-server/send_email",
     "risk_tier": 3,
     "tier_label": "destructive-or-external",
@@ -54,7 +54,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "comms-server/post_slack_message",
     "risk_tier": 2,
     "tier_label": "internal-write",
@@ -63,7 +63,7 @@
     "derived_failure_mode": "fail_open_with_async_receipt"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "comms-server/read_thread",
     "risk_tier": 1,
     "tier_label": "read-only",
@@ -72,7 +72,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "analytics-server/run_report",
     "risk_tier": 1,
     "tier_label": "read-only",
@@ -81,7 +81,7 @@
     "derived_failure_mode": "fail_open"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "analytics-server/export_dataset",
     "risk_tier": 3,
     "tier_label": "destructive-or-external",
@@ -90,7 +90,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "analytics-server/zql_query",
     "risk_tier": 1,
     "tier_label": "read-only",
@@ -99,7 +99,7 @@
     "derived_failure_mode": "fail_open"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "billing-server/get_invoice",
     "risk_tier": 1,
     "tier_label": "read-only",
@@ -108,7 +108,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "billing-server/refund_payment",
     "risk_tier": 3,
     "tier_label": "destructive-or-external",
@@ -117,7 +117,7 @@
     "derived_failure_mode": "fail_closed"
   },
   {
-    "ts": "2026-10-10T13:24:18Z",
+    "ts": "2026-10-10T13:39:18Z",
     "action": "billing-server/reconcile_ledger",
     "risk_tier": "UNCLASSIFIED",
     "tier_label": "unknown",

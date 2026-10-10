@@ -115,6 +115,14 @@ The safety webhook is always degraded in this deployment — the outage *is*
 the demo scenario. `Dockerfile`, `start.sh`, and `render.yaml` are the only
 deploy-specific files; the demo logic is untouched.
 
+**Rather click than curl?** Open `https://your-service.onrender.com/` in a
+browser. The proxy serves a guided demo console: the token is built into the
+page, five numbered scenario buttons walk the policy (verified read → pass,
+verified write → pass + audit receipt, destructive → block, spoofed label →
+block, unclassified → block), each shows the derived tier and outcome with a
+plain-English "what happened", and the audit trail streams live from
+`GET /receipts`. `POST /reset` clears the trail between visitors.
+
 ## The four acts
 
 **Act 1 — the gap.** A destructive request goes through the gateway with a

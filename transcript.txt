@@ -6,7 +6,7 @@ Synthetic data only. Portkey OSS gateway, local mock upstream, local webhook.
 ACT 1 — THE GAP. Destructive action; the safety webhook is degraded.
 Straight to the gateway, nothing says what to do on timeout.
 ------------------------------------------------------------------------------
-  HTTP 200 in 1.06s -> REQUEST EXECUTED
+  HTTP 200 in 1.12s -> REQUEST EXECUTED
   webhook result: Request timed out after 1000ms
   fail_on_error=False  deny=False
   upstream said: [MOCK LLM] Executed request: delete all records for customer 4417
@@ -16,7 +16,7 @@ ACT 2 — THE PRIMITIVE THAT EXISTS. Same timeout, failOnError: true.
 The docs ship this toggle. It works — if a human flips it correctly,
 by hand, for every action, forever.
 ------------------------------------------------------------------------------
-  HTTP 446 in 1.03s -> REQUEST BLOCKED
+  HTTP 446 in 1.01s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => Same timeout, opposite outcome. The primitive exists; the POLICY doesn't.
@@ -29,7 +29,7 @@ themselves. Only VERIFIED labels earn fail-open. Webhook degraded.
 
   caller -> payload tool_call=analytics-server/run_report
   proxy derived: action=analytics-server/run_report  tier=1
-  HTTP 200 in 1.05s -> REQUEST EXECUTED
+  HTTP 200 in 1.07s -> REQUEST EXECUTED
   webhook result: Request timed out after 1000ms
   fail_on_error=False  deny=False
   upstream said: [MOCK LLM] Executed request: run the weekly usage report
@@ -42,7 +42,7 @@ themselves. Only VERIFIED labels earn fail-open. Webhook degraded.
 
   caller -> payload tool_call=crm-server/delete_customer
   proxy derived: action=crm-server/delete_customer  tier=3
-  HTTP 446 in 1.03s -> REQUEST BLOCKED
+  HTTP 446 in 1.02s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
 
@@ -53,7 +53,7 @@ ACT 4 — THE HOSTILE CALLER, TWO WAYS.
 ------------------------------------------------------------------------------
   caller -> header says run_report; payload tool_call=crm-server/delete_customer
   proxy derived: action=crm-server/delete_customer  tier=3 (mismatch logged)
-  HTTP 446 in 1.03s -> REQUEST BLOCKED
+  HTTP 446 in 1.05s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => The label is attacker-controlled; the payload is not. Enforcement
@@ -64,7 +64,7 @@ ACT 4 — THE HOSTILE CALLER, TWO WAYS.
 ------------------------------------------------------------------------------
   caller -> delete payload + its own fail-open config
   proxy derived: action=crm-server/delete_customer  tier=3 (client config stripped)
-  HTTP 446 in 1.02s -> REQUEST BLOCKED
+  HTTP 446 in 1.03s -> REQUEST BLOCKED
   webhook result: Request timed out after 1000ms
   fail_on_error=True  deny=True
   => The caller cannot choose its own risk tier OR its own policy.
@@ -89,11 +89,19 @@ including the label spoof and the stripped hostile config:
     crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
     !! STRIPPED_CLIENT_CONFIG: crm-server/delete_customer — caller tried to attach its own guardrail config — removed
     crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=True
+    crm-server/get_customer                    tier=1            BLOCKED   stripped_client_config=False
+    analytics-server/run_report                tier=1            EXECUTED  stripped_client_config=False
+    comms-server/post_slack_message            tier=2            EXECUTED  stripped_client_config=False
+    crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
+    !! LABEL_MISMATCH: claimed=analytics-server/run_report  payload=crm-server/delete_customer — enforced payload
+    crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=False
+    !! STRIPPED_CLIENT_CONFIG: crm-server/delete_customer — caller tried to attach its own guardrail config — removed
+    crm-server/delete_customer                 tier=3            BLOCKED   stripped_client_config=True
 
 ASYNC RECEIPT DRAIN — giving the out-of-band paths time to write
 (the tier-2 audit is fired by the proxy AFTER answering; the
 degraded webhook sleeps past the gateway timeout)...
-  webhook receipts written: 20
+  webhook receipts written: 28
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
@@ -107,6 +115,14 @@ degraded webhook sleeps past the gateway timeout)...
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=analytics-server/run_report              mode=slow note=responded AFTER gateway already timed out
+    [proxy-audit] action=comms-server/post_slack_message          mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
+    [gateway] action=crm-server/get_customer                  mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=crm-server/delete_customer               mode=slow note=responded AFTER gateway already timed out
     [gateway] action=analytics-server/run_report              mode=slow note=responded AFTER gateway already timed out

@@ -109,6 +109,21 @@ def fire_audit_receipt(action):
     threading.Thread(target=_send, daemon=True).start()
 
 
+def coverage_line():
+    """'5 of 14 tools human-verified (36%); everything else fails closed' —
+    computed from the engine's policy_receipts.json at page-serve time, so it
+    stays true if the inventory or the human review queue changes."""
+    try:
+        receipts = json.loads((HERE / "policy_receipts.json").read_text())
+    except Exception:
+        return "coverage unavailable — run policy_engine.py"
+    total = len(receipts)
+    verified = sum(1 for r in receipts if r.get("verification") == "VERIFIED")
+    pct = round(verified / total * 100) if total else 0
+    return (f"{verified} of {total} tools human-verified ({pct}%); "
+            f"everything else fails closed")
+
+
 # ---- the two "problem" demo cards (0a/0b) ----------------------------------
 # The page's first two cards replay run_demo.py acts 1-2: the SAME delete
 # request going STRAIGHT to the gateway with a caller-style config — first
@@ -142,11 +157,10 @@ def raw_gateway_call(fail_on_error):
 
 # Demo console: a guided flow served at GET / (and /demo). The server injects
 # DEMO_TOKEN into the page, so visitors just press buttons — no token entry.
-# Five numbered scenarios walk the policy (verified read → pass, verified
-# write → pass + audit, destructive → block, spoofed label → block,
-# unclassified → block), each with its expected outcome and a plain-English
-# "what happened". A live audit trail streams from GET /receipts, and
-# POST /reset clears the receipt logs for a clean re-run.
+# Six numbered scenarios walk the policy — including the OBSERVED card (a
+# read-only guess that fails closed), which is what sets a verification-gated
+# design apart from a plain allow/deny list. A live audit trail streams from
+# GET /receipts, and POST /reset clears the receipt logs for a clean re-run.
 DEMO_PAGE = """<!doctype html>
 <html lang="en">
 <head>
@@ -190,14 +204,14 @@ DEMO_PAGE = """<!doctype html>
 <h1>Risk-Gate Demo</h1>
 <p class="sub">When the safety check is too slow to answer, who decides what the gate does?
 First this page shows the problem on the raw gateway — <b>0a</b> and <b>0b</b> —
-then the five scenarios behind <b>the risk gate</b>, which derives the answer from
+then the six scenarios behind <b>the risk gate</b>, which derives the answer from
 <b>what the action does</b> and whether a human <b>verified it</b>, never from the
 caller's word. The safety webhook here is deliberately degraded, so every result is
 the failure-mode policy (or its absence) doing its job. The demo token is built
 into this page: just work through the steps in order.</p>
 
 <p><button id="runall" onclick="runAll()">Run the whole story</button>
-<span class="sub">fires 0a → 0b → the five scenarios, about 20 seconds. First request
+<span class="sub">fires 0a → 0b → the six scenarios, about 25 seconds. First request
 after an idle stretch can be slow on a free-tier host &mdash; the services are waking up.</span></p>
 
 <div class="cols">
@@ -210,6 +224,7 @@ after an idle stretch can be slow on a free-tier host &mdash; the services are w
     <p><button class="ghost" onclick="resetAudit()">Reset audit trail</button></p>
 
     <h2>The policy in one table</h2>
+    <p><b>__COVERAGE_LINE__</b></p>
     <table>
       <tr><th>Action class</th><th>During the outage</th></tr>
       <tr><td>VERIFIED tier 1 &mdash; read-only</td><td class="pass">pass</td></tr>
@@ -270,7 +285,7 @@ const SCENARIOS = [
   {part: 'gate', num: '4', name: 'The liar: a delete labelled as a "report"',
    hint: 'spoofed label · expect BLOCKED (446)',
    expect: 446,
-   why: 'The caller claims this is a read-only report. The proxy reads the actual tool_call from the payload, logs LABEL_MISMATCH, and enforces the payload. A label is a hint; the payload is the truth.',
+   why: 'The caller claims this is a read-only report. The proxy reads the tool_call from the body, logs LABEL_MISMATCH, and enforces it. The gate trusts the tool call, not the header — on MCP, the tool call is what actually executes.',
    spoof: 'analytics-server/run_report',
    body: {model: 'mock-llm', messages: [{role: 'user', content: 'delete all records for customer 4417'}],
           tool_call: {server: 'crm-server', tool: 'delete_customer', arguments: {customer_id: '4417'}}}},
@@ -280,6 +295,12 @@ const SCENARIOS = [
    why: 'Unknown risk fails shut until a human reviews it. A tool added tomorrow never inherits the permissive default.',
    body: {model: 'mock-llm', messages: [{role: 'user', content: 'reconcile the ledger'}],
           tool_call: {server: 'billing-server', tool: 'reconcile_ledger', arguments: {since: '2024-01'}}}},
+  {part: 'gate', num: '6', name: "A 'read-only' guess nobody has verified",
+   hint: 'OBSERVED tier 1 (heuristic only) · expect BLOCKED (446)',
+   expect: 446,
+   why: "The classifier's regex says read-only — the same tier 1 as scenario 1, which passed. But scenario 1 was VERIFIED by a human and this label is only a guess, so it fails closed during the outage. Verification state, not the tier, made the difference. A plain allow/deny list can't express this; that's the design.",
+   body: {model: 'mock-llm', messages: [{role: 'user', content: 'look up customer 4417'}],
+          tool_call: {server: 'crm-server', tool: 'get_customer', arguments: {customer_id: '4417'}}}},
 ];
 
 const box = document.getElementById('scenarios');
@@ -497,7 +518,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # it. This keeps casual abuse out; it is not secrecy — anyone can
             # read the token from the page source, same as any browser-sent
             # demo credential.
-            page = DEMO_PAGE.replace("__DEMO_TOKEN_JSON__", json.dumps(DEMO_TOKEN or ""))
+            page = (DEMO_PAGE
+                    .replace("__DEMO_TOKEN_JSON__", json.dumps(DEMO_TOKEN or ""))
+                    .replace("__COVERAGE_LINE__", coverage_line()))
             payload = page.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")

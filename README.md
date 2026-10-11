@@ -117,10 +117,14 @@ deploy-specific files; the demo logic is untouched.
 
 **Rather click than curl?** Open `https://your-service.onrender.com/` in a
 browser. The proxy serves a guided demo console: the token is built into the
-page, five numbered scenario buttons walk the policy (verified read → pass,
+page. It opens with the problem on the raw gateway — card **0a** replays the
+fail-open default (the delete executes, HTTP 200) and **0b** the hand-flipped
+`failOnError` switch (HTTP 446), both labelled "without the risk gate" and
+replayed through fixed server-side configs (`/demo/raw-*`, not a config
+forwarder) — then five scenarios the risk gate decides (verified read → pass,
 verified write → pass + audit receipt, destructive → block, spoofed label →
-block, unclassified → block), each shows the derived tier and outcome with a
-plain-English "what happened", and the audit trail streams live from
+block, unclassified → block), each showing the derived tier and outcome with a
+plain-English "what happened". The audit trail streams live from
 `GET /receipts` — enforcement decisions plus the tier-2 audit receipts that
 land out of band. `POST /reset` clears the trail between visitors; its
 generation counter tells every open browser to re-sync.

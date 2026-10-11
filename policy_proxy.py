@@ -109,6 +109,37 @@ def fire_audit_receipt(action):
     threading.Thread(target=_send, daemon=True).start()
 
 
+# ---- the two "problem" demo cards (0a/0b) ----------------------------------
+# The page's first two cards replay run_demo.py acts 1-2: the SAME delete
+# request going STRAIGHT to the gateway with a caller-style config — first
+# with the gateway default (fail-open on timeout), then with failOnError.
+# The config is built HERE and hard-coded: these routes are teaching replays,
+# not a config forwarder, so they are not a way around the risk gate.
+def raw_gateway_call(fail_on_error):
+    webhook = {"webhookURL": "http://127.0.0.1:9200/check?mode=slow"
+                            "&action_class=crm-server/delete_customer",
+               "timeout": 1000}
+    if fail_on_error:
+        webhook["failOnError"] = True
+    cfg = {"provider": "openai", "api_key": "dummy",
+           "custom_host": "http://127.0.0.1:9100",
+           "input_guardrails": [{"id": "custom-safety-check", "deny": True,
+                                 "default.webhook": webhook}]}
+    body = {"model": "mock-llm", "messages": [
+        {"role": "user", "content": "delete all records for customer 4417"}]}
+    req = urlreq.Request(GATEWAY, data=json.dumps(body).encode(), method="POST",
+                         headers={"Content-Type": "application/json",
+                                  "x-portkey-config": json.dumps(cfg)})
+    try:
+        with urlreq.urlopen(req, timeout=60) as r:
+            return r.status, json.loads(r.read())
+    except HTTPError as e:
+        return e.code, json.loads(e.read())
+    except Exception as e:  # gateway unreachable — say so, don't fake a verdict
+        return 502, {"error": {"message": f"raw gateway call failed: {e}",
+                               "type": "raw_gateway_error"}}
+
+
 # Demo console: a guided flow served at GET / (and /demo). The server injects
 # DEMO_TOKEN into the page, so visitors just press buttons — no token entry.
 # Five numbered scenarios walk the policy (verified read → pass, verified
@@ -136,6 +167,8 @@ DEMO_PAGE = """<!doctype html>
   @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
   .card { border: 1px solid #ddd; border-radius: 10px; padding: .9rem 1rem; margin-bottom: .8rem; }
   .card h3 { font-size: 1rem; margin: 0 0 .15rem; }
+  .parthead { margin: 1.2rem 0 .1rem; padding-top: .8rem; border-top: 2px solid #146eb4; }
+  .rawbanner { margin-top: .5rem; font-size: .8rem; font-weight: 700; color: #8a5a00; background: #fff6e0; border: 1px solid #e3b341; border-radius: 6px; padding: .3rem .6rem; }
   .hint { font-size: .85rem; color: #666; }
   .chip { display: inline-block; font-size: .78rem; font-weight: 700; padding: .12rem .6rem; border-radius: 999px; margin-left: .4rem; }
   .chip.ok { background: #e6f6ec; color: #0a7d33; }
@@ -156,20 +189,23 @@ DEMO_PAGE = """<!doctype html>
 <body>
 <h1>Risk-Gate Demo</h1>
 <p class="sub">When the safety check is too slow to answer, who decides what the gate does?
-This gate derives the answer from <b>what the action does</b> and whether a human
-<b>verified it</b> &mdash; never from the caller's word. The safety webhook here is
-deliberately degraded, so every result below is the failure-mode policy doing its job.
-The demo token is built into this page: just work through the five scenarios.</p>
+First this page shows the problem on the raw gateway — <b>0a</b> and <b>0b</b> —
+then the five scenarios behind <b>the risk gate</b>, which derives the answer from
+<b>what the action does</b> and whether a human <b>verified it</b>, never from the
+caller's word. The safety webhook here is deliberately degraded, so every result is
+the failure-mode policy (or its absence) doing its job. The demo token is built
+into this page: just work through the steps in order.</p>
 
 <p><button id="runall" onclick="runAll()">Run the whole story</button>
-<span class="sub">fires all five in order, about 15 seconds. First request after an
-idle stretch can be slow on a free-tier host &mdash; the services are waking up.</span></p>
+<span class="sub">fires 0a → 0b → the five scenarios, about 20 seconds. First request
+after an idle stretch can be slow on a free-tier host &mdash; the services are waking up.</span></p>
 
 <div class="cols">
   <div id="scenarios"></div>
   <div>
     <h2>Live audit trail</h2>
-    <p class="sub">every decision the enforcement point makes streams here as it happens</p>
+    <p class="sub">every decision the risk gate makes streams here as it happens
+    (raw gateway calls 0a/0b are not gate decisions, so they don't appear)</p>
     <div id="audit"><span class="empty">(no events yet &mdash; fire a scenario)</span></div>
     <p><button class="ghost" onclick="resetAudit()">Reset audit trail</button></p>
 
@@ -195,33 +231,50 @@ const DEMO_TOKEN = __DEMO_TOKEN_JSON__;
 const HEADERS = {'Content-Type': 'application/json'};
 if (DEMO_TOKEN) HEADERS['x-demo-token'] = DEMO_TOKEN;
 
+const PARTS = {
+  problem: {title: 'Part 1 — the problem: without the risk gate',
+            sub: 'both calls go straight to the gateway with a caller-supplied config — the safety webhook is degraded (slower than the 1000 ms timeout)'},
+  gate:    {title: 'Part 2 — the proposal: the risk gate decides',
+            sub: 'these calls go through the policy proxy — the failure mode is derived from the action in the payload, never chosen by the caller'},
+};
+
 const SCENARIOS = [
-  {name: 'A read-only report, human-verified',
+  {part: 'problem', num: '0a', name: "The gateway's default",
+   hint: 'delete · slow check · no failOnError · expect EXECUTED (200)',
+   expect: 200, raw: '/demo/raw-default',
+   why: 'The check times out and the gateway falls back to its default verdict: pass. A destructive request executes while the safety check cannot answer. This is the gap — fail-open by default, on every action class alike.',
+   body: null},
+  {part: 'problem', num: '0b', name: 'The setting someone has to remember',
+   hint: 'same delete · same slow check · failOnError: true · expect BLOCKED (446)',
+   expect: 446, raw: '/demo/raw-failonerror',
+   why: 'Same timeout, opposite outcome: failOnError flips the failure mode and the gateway blocks. The primitive already ships in the product — but it is a per-check boolean a human must flip by hand, for every check, forever.',
+   body: null},
+  {part: 'gate', num: '1', name: 'A read-only report, human-verified',
    hint: 'VERIFIED tier 1 · expect PASS (200)',
    expect: 200,
    why: 'A human confirmed this tool only reads. Availability wins — it rides out the degraded check.',
    body: {model: 'mock-llm', messages: [{role: 'user', content: 'run the weekly usage report'}],
           tool_call: {server: 'analytics-server', tool: 'run_report', arguments: {report_id: 'weekly-usage'}}}},
-  {name: 'An internal Slack post, human-verified',
+  {part: 'gate', num: '2', name: 'An internal Slack post, human-verified',
    hint: 'VERIFIED tier 2 · expect PASS (200) + audit receipt',
    expect: 200,
    why: 'Passes in milliseconds — the check runs async — and the audit receipt lands out of band. Watch for it in the trail.',
    body: {model: 'mock-llm', messages: [{role: 'user', content: 'announce the deploy'}],
           tool_call: {server: 'comms-server', tool: 'post_slack_message', arguments: {channel: '#eng-updates', text: 'deploy done'}}}},
-  {name: 'Delete a customer, human-verified destructive',
+  {part: 'gate', num: '3', name: 'Delete a customer, human-verified destructive',
    hint: 'VERIFIED tier 3 · expect BLOCKED (446)',
    expect: 446,
    why: 'Destructive actions fail closed even when verified. Safety beats availability.',
    body: {model: 'mock-llm', messages: [{role: 'user', content: 'delete all records for customer 4417'}],
           tool_call: {server: 'crm-server', tool: 'delete_customer', arguments: {customer_id: '4417'}}}},
-  {name: 'The liar: a delete labelled as a "report"',
+  {part: 'gate', num: '4', name: 'The liar: a delete labelled as a "report"',
    hint: 'spoofed label · expect BLOCKED (446)',
    expect: 446,
    why: 'The caller claims this is a read-only report. The proxy reads the actual tool_call from the payload, logs LABEL_MISMATCH, and enforces the payload. A label is a hint; the payload is the truth.',
    spoof: 'analytics-server/run_report',
    body: {model: 'mock-llm', messages: [{role: 'user', content: 'delete all records for customer 4417'}],
           tool_call: {server: 'crm-server', tool: 'delete_customer', arguments: {customer_id: '4417'}}}},
-  {name: 'A tool nobody has classified yet',
+  {part: 'gate', num: '5', name: 'A tool nobody has classified yet',
    hint: 'UNCLASSIFIED · expect BLOCKED (446)',
    expect: 446,
    why: 'Unknown risk fails shut until a human reviews it. A tool added tomorrow never inherits the permissive default.',
@@ -230,17 +283,35 @@ const SCENARIOS = [
 ];
 
 const box = document.getElementById('scenarios');
-SCENARIOS.forEach((s, i) => {
+let currentPart = null;
+SCENARIOS.forEach((s) => {
+  if (s.part !== currentPart) {
+    currentPart = s.part;
+    const head = document.createElement('h2');
+    head.className = 'parthead';
+    head.textContent = PARTS[s.part].title;
+    const sub = document.createElement('p');
+    sub.className = 'sub';
+    sub.textContent = PARTS[s.part].sub;
+    box.appendChild(head); box.appendChild(sub);
+  }
   const card = document.createElement('div'); card.className = 'card';
   const h = document.createElement('h3');
-  h.textContent = (i + 1) + '. ' + s.name;
+  h.textContent = s.num + '. ' + s.name;
   const chip = document.createElement('span'); chip.className = 'chip wait'; chip.textContent = 'not tried';
   h.appendChild(chip);
   const hint = document.createElement('div'); hint.className = 'hint'; hint.textContent = s.hint;
   const btn = document.createElement('button'); btn.textContent = 'Try it'; btn.style.marginTop = '.4rem';
   const result = document.createElement('div'); result.className = 'result';
   btn.onclick = () => fire(s);
-  card.appendChild(h); card.appendChild(hint); card.appendChild(btn); card.appendChild(result);
+  card.appendChild(h); card.appendChild(hint);
+  if (s.raw) {
+    const banner = document.createElement('div');
+    banner.className = 'rawbanner';
+    banner.textContent = 'WITHOUT THE RISK GATE — raw gateway call, no policy enforced';
+    card.appendChild(banner);
+  }
+  card.appendChild(btn); card.appendChild(result);
   box.appendChild(card);
   s._btn = btn; s._chip = chip; s._result = result;
 });
@@ -254,15 +325,32 @@ async function fire(s) {
   let lines, ok = false;
   try {
     const headers = Object.assign({}, HEADERS);
-    if (s.spoof) headers['x-action'] = s.spoof;   // caller-supplied label: only a hint
-    const r = await fetch('/v1/chat/completions', {method: 'POST', headers, body: JSON.stringify(s.body)});
+    let r;
+    if (s.raw) {
+      // Acts 0a/0b: the server replays a fixed raw-gateway config; the
+      // browser never supplies config.
+      r = await fetch(s.raw, {method: 'POST', headers});
+    } else {
+      if (s.spoof) headers['x-action'] = s.spoof;   // caller-supplied label: only a hint
+      r = await fetch('/v1/chat/completions', {method: 'POST', headers, body: JSON.stringify(s.body)});
+    }
     const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
-    const gate = ['X-RiskGate-Action', 'X-RiskGate-Tier', 'X-RiskGate-Outcome']
-      .map(k => k.replace('X-RiskGate-', '').toLowerCase() + '=' + (r.headers.get(k) || '-'));
     ok = r.status === s.expect;
-    lines = ['HTTP ' + r.status + ' in ' + elapsed + 's — ' + (r.status === 200 ? 'EXECUTED' : 'BLOCKED')
-             + (ok ? '  (as expected)' : '  (UNEXPECTED — expected ' + s.expect + ')'),
-             'gate:  ' + gate.join('  ')];
+    const verdict = 'HTTP ' + r.status + ' in ' + elapsed + 's — ' + (r.status === 200 ? 'EXECUTED' : 'BLOCKED')
+             + (ok ? '  (as expected)' : '  (UNEXPECTED — expected ' + s.expect + ')');
+    if (s.raw) {
+      const body = await r.json().catch(() => ({}));
+      const hook = ((body.hook_results || {}).before_request_hooks || [{}])[0];
+      const check = (hook.checks || [{}])[0];
+      lines = [verdict,
+               'webhook: ' + (((check.error || {}).message) || 'responded'),
+               'fail_on_error=' + check.fail_on_error + '  deny=' + hook.deny,
+               "no risk gate in the path — the caller's own config decided this"];
+    } else {
+      const gate = ['X-RiskGate-Action', 'X-RiskGate-Tier', 'X-RiskGate-Outcome']
+        .map(k => k.replace('X-RiskGate-', '').toLowerCase() + '=' + (r.headers.get(k) || '-'));
+      lines = [verdict, 'gate:  ' + gate.join('  ')];
+    }
   } catch (e) {
     lines = ['request failed: ' + e];
   }
@@ -271,7 +359,7 @@ async function fire(s) {
   s._result.textContent = '';
   s._result.appendChild(pre); s._result.appendChild(why);
   s._chip.className = 'chip ' + (ok ? 'ok' : 'bad');
-  s._chip.textContent = ok ? (s.expect === 200 ? 'passed' : 'blocked') : 'check';
+  s._chip.textContent = ok ? (s.expect === 200 ? (s.raw ? 'executed' : 'passed') : 'blocked') : 'check';
   s._btn.disabled = false;
   s._btn.textContent = 'Try again';
 }
@@ -439,6 +527,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
                          "note": "missing or wrong x-demo-token"})
             self._send_json(401, {"error": {"message": "missing or wrong x-demo-token",
                                             "type": "auth_failed"}})
+            return
+
+        # Demo cards 0a/0b: replay the raw-gateway call (raw_gateway_call).
+        # The gateway's own status is returned verbatim (200 = executed,
+        # 446 = blocked) so the page can render the "before" picture.
+        p = self.path.rstrip("/")
+        if p in ("/demo/raw-default", "/demo/raw-failonerror"):
+            status, payload = raw_gateway_call(p.endswith("failonerror"))
+            self._send_json(status, payload, {"X-RiskGate-Raw": "no-risk-gate"})
             return
 
         store = load_store()
